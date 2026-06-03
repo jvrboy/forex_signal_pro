@@ -1,0 +1,54 @@
+# Flutter
+.dart_tool/
+.packages
+build/
+*.iml
+.idea/
+.vscode/
+*.lock
+*.log
+*.swp
+.DS_Store
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+local.properties
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# macOS
+macos/Pods/
+macos/.symlinks/
+
+# Windows
+windows/CMakeCache.txt
+windows/out/
+windows/flutter/ephemeral/
+
+# Secrets
+.env
+*.key
+*.p12
+*.jks
+service_account.json
+
+# Assets - large models (user downloads)
+assets/gguf_models/
+assets/onnx_models/
+*.safetensors
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+include: package:very_good_analysis/analysis_options.yaml
+
+linter:
+  rules:
+    public_member_api_docs: false
+    lines_longer_than_80_chars: false
+    avoid_print: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_final_locals: true
+    require_trailing_commas: false
+    sort_constructors_first: true
+    unawaited_futures: false
+    always_use_package_imports: true
+    avoid_redundant_argument_values: false
+
+analyzer:
+  errors:
+    invalid_annotation_target: ignore
+    missing_return: error
+    dead_code: warning
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "build/**"
+    - "lib/features/**/domain/models/*.freezed.dart"
