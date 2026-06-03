@@ -162,7 +162,7 @@ class DerivSocketService {
       DeriveRequest.subscribeTicks(symbol),
       timeout: const Duration(seconds: 10),
     );
-    final subId = response.data?['subscription']?['id'] as String?;
+    final subId = response.raw['subscription']?['id'] as String?;
     if (subId != null) {
       _tickSubscriptions[symbol] = subId;
     }

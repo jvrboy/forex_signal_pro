@@ -248,9 +248,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _exportData(BuildContext context) async {
-    await SharePlus.instance.share(
-      ShareParams(text: 'Forex Signal Pro - Trading Performance Export'),
-    );
+    await Share.share('Forex Signal Pro - Trading Performance Export');
   }
 }
 

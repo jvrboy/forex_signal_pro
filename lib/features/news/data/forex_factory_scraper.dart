@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
-import '../../core/constants/app_constants.dart';
+import 'package:forex_signal_pro/core/constants/app_constants.dart';
 import '../domain/news_event.dart';
 
 class ForexFactoryScraper {

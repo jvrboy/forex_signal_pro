@@ -75,7 +75,8 @@ extension ActivationX on Activation {
         if (x > 10) return 1;
         return 1 / (1 + math.exp(-x));
       case Activation.tanh:
-        return math.tanh(x);
+        final e2x = math.exp(2 * x);
+        return (e2x - 1) / (e2x + 1);
       case Activation.linear:
         return x;
     }
