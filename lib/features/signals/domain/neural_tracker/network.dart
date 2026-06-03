@@ -1,5 +1,12 @@
-import 'dart:math';
+import 'dart:math' as math;
 import 'dart:typed_data';
+
+double _nextGaussian(math.Random rng) {
+  double u1 = 0, u2 = 0;
+  while (u1 <= 0 || u1 >= 1) u1 = rng.nextDouble();
+  while (u2 <= 0 || u2 >= 1) u2 = rng.nextDouble();
+  return math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2);
+}
 
 class Layer {
   final Float64List weights;
@@ -12,13 +19,13 @@ class Layer {
     required this.inputSize,
     required this.outputSize,
     required this.activation,
-    Random? random,
+    math.Random? random,
   }) : weights = Float64List(inputSize * outputSize),
        biases = Float64List(outputSize) {
-    final rng = random ?? Random();
-    final scale = sqrt(2.0 / inputSize);
+    final rng = random ?? math.Random();
+    final scale = math.sqrt(2.0 / inputSize);
     for (int i = 0; i < weights.length; i++) {
-      weights[i] = rng.nextGaussian() * scale;
+      weights[i] = _nextGaussian(rng) * scale;
     }
     for (int i = 0; i < biases.length; i++) {
       biases[i] = 0.01;
@@ -66,9 +73,9 @@ extension ActivationX on Activation {
       case Activation.sigmoid:
         if (x < -10) return 0;
         if (x > 10) return 1;
-        return 1 / (1 + exp(-x));
+        return 1 / (1 + math.exp(-x));
       case Activation.tanh:
-        return tanh(x);
+        return math.tanh(x);
       case Activation.linear:
         return x;
     }
@@ -93,12 +100,12 @@ extension ActivationX on Activation {
 class SignalScoringNN {
   final List<Layer> layers;
   final double learningRate;
-  final Random _rng;
+  final math.Random _rng;
 
   SignalScoringNN({
     required this.layers,
     this.learningRate = 0.001,
-  }) : _rng = Random();
+  }) : _rng = math.Random();
 
   factory SignalScoringNN.defaultConfig() {
     return SignalScoringNN(

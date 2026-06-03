@@ -14,8 +14,8 @@ void main() {
       final signal = generator.generateSignal(
         symbol: 'EUR/USD',
         direction: SignalDirection.buy,
-        confluenceCount: 5,
-        timeframesAligned: 3,
+        confluenceCount: 10,
+        timeframesAligned: 4,
         indicatorsUsed: ['RSI', 'MACD', 'EMA'],
         strategiesUsed: ['Strategy1', 'Strategy2'],
       );
@@ -57,8 +57,8 @@ void main() {
       final signal = generator.generateSignal(
         symbol: 'GBP/USD',
         direction: SignalDirection.sell,
-        confluenceCount: 5,
-        timeframesAligned: 3,
+        confluenceCount: 10,
+        timeframesAligned: 4,
         indicatorsUsed: [],
         strategiesUsed: [],
       );
@@ -96,8 +96,8 @@ void main() {
       final signalWithoutNews = generator.generateSignal(
         symbol: 'EUR/USD',
         direction: SignalDirection.buy,
-        confluenceCount: 5,
-        timeframesAligned: 3,
+        confluenceCount: 18,
+        timeframesAligned: 5,
         indicatorsUsed: [],
         strategiesUsed: [],
         newsAdjusted: false,
@@ -106,8 +106,8 @@ void main() {
       final signalWithNews = generator.generateSignal(
         symbol: 'EUR/USD',
         direction: SignalDirection.buy,
-        confluenceCount: 5,
-        timeframesAligned: 3,
+        confluenceCount: 18,
+        timeframesAligned: 5,
         indicatorsUsed: [],
         strategiesUsed: [],
         newsAdjusted: true,
