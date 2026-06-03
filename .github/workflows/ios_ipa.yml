@@ -27,6 +27,10 @@ jobs:
       - name: Verify Flutter installation
         run: flutter doctor
 
+      - name: Create required asset directories
+        run: |
+          mkdir -p assets/gguf_models assets/onnx_models assets/fonts assets/icons
+
       - name: Regenerate iOS platform files
         run: flutter create --project-name forex_signal_pro --platforms ios .
 
