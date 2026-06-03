@@ -27,11 +27,8 @@ jobs:
       - name: Verify Flutter installation
         run: flutter doctor
 
-      - name: Generate iOS platform files if missing
-        run: |
-          if [ ! -d "ios" ]; then
-            flutter create --project-name forex_signal_pro --platforms ios .
-          fi
+      - name: Regenerate iOS platform files
+        run: flutter create --project-name forex_signal_pro --platforms ios .
 
       - name: Install dependencies
         run: flutter pub get
@@ -44,14 +41,8 @@ jobs:
         run: flutter test
         continue-on-error: true
 
-      - name: Setup CocoaPods
-        run: |
-          cd ios
-          pod repo update
-          pod install
-
       - name: Build iOS Release (no code signing)
-        run: flutter build ios --release --no-codesign --verbose
+        run: flutter build ios --release --no-codesign
 
       - name: Create archive and export unsigned IPA
         run: |
