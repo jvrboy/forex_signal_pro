@@ -151,31 +151,37 @@ class SignalScoringNN {
     final error = prediction - label;
     final loss = error * error;
 
-    double delta = error * layers.last.activation.derivative(
-      (caches.last['last_output'] as Float64List)[0],
-    );
+    final lastOutput = caches.last['last_output'] as Float64List;
+    final deltas = Float64List(layers.last.outputSize);
+    for (int o = 0; o < layers.last.outputSize; o++) {
+      deltas[o] = (o == 0 ? error : 0.0) * layers.last.activation.derivative(lastOutput[o]);
+    }
 
     for (int l = layers.length - 1; l >= 0; l--) {
       final layer = layers[l];
       final input = l == 0 ? features : caches[l - 1]['last_output'] as Float64List;
-      final output = caches[l]['last_output'] as Float64List;
 
       for (int o = 0; o < layer.outputSize; o++) {
-        layer.biases[o] -= learningRate * delta;
+        layer.biases[o] -= learningRate * deltas[o];
 
         for (int i = 0; i < layer.inputSize; i++) {
-          layer.weights[o * layer.inputSize + i] -= learningRate * delta * input[i];
+          layer.weights[o * layer.inputSize + i] -= learningRate * deltas[o] * input[i];
         }
+      }
 
-        if (l > 0) {
-          double newDelta = 0;
-          final prevLayer = layers[l - 1];
-          for (int pi = 0; pi < prevLayer.outputSize; pi++) {
-            newDelta += layer.weights[pi * layer.inputSize + o] * delta;
+      if (l > 0) {
+        final prevLayer = layers[l - 1];
+        final prevOutput = caches[l - 1]['last_output'] as Float64List;
+        final newDeltas = Float64List(prevLayer.outputSize);
+        for (int po = 0; po < prevLayer.outputSize; po++) {
+          double sum = 0;
+          for (int o = 0; o < layer.outputSize; o++) {
+            sum += layer.weights[o * layer.inputSize + po] * deltas[o];
           }
-          delta = newDelta * prevLayer.activation.derivative(
-            (caches[l - 1]['last_output'] as Float64List)[o],
-          );
+          newDeltas[po] = sum * prevLayer.activation.derivative(prevOutput[po]);
+        }
+        for (int i = 0; i < newDeltas.length; i++) {
+          deltas[i] = newDeltas[i];
         }
       }
     }

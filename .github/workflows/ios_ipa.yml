@@ -41,8 +41,30 @@ jobs:
         run: flutter test
         continue-on-error: true
 
+      - name: CocoaPods setup
+        run: |
+          cd ios
+          pod repo update
+          pod install
+
+      - name: Check iOS project structure
+        run: |
+          ls -la ios/
+          ls -la ios/Runner/
+          echo "--- Podfile ---"
+          cat ios/Podfile 2>/dev/null || echo "No Podfile found"
+
       - name: Build iOS Release (no code signing)
-        run: flutter build ios --release --no-codesign
+        run: |
+          flutter build ios --release --no-codesign --verbose 2>&1 | tee ${{ runner.temp }}/flutter_build.log
+        continue-on-error: true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-build-log
+          path: ${{ runner.temp }}/flutter_build.log
 
       - name: Create archive and export unsigned IPA
         run: |
