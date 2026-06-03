@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/market_data_provider.dart';
+import '../../domain/models/symbol_info.dart';
 
 class MarketWatchScreen extends ConsumerWidget {
   const MarketWatchScreen({super.key});

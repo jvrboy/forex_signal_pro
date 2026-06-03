@@ -361,7 +361,7 @@ class _MessageBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildFormattedText(text, theme),
+                  _buildFormattedText(text, theme, context),
                   const SizedBox(height: 4),
                   Text(
                     '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}',
@@ -377,7 +377,7 @@ class _MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildFormattedText(String text, ThemeData theme) {
+  Widget _buildFormattedText(String text, ThemeData theme, BuildContext context) {
     final spans = <TextSpan>[];
     final lines = text.split('\n');
 

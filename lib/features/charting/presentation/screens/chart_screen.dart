@@ -133,14 +133,16 @@ class _ChartScreenState extends ConsumerState<ChartScreen> {
   void _showDrawingTools(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => Wrap(
+      builder: (ctx) => Padding(
         padding: const EdgeInsets.all(16),
-        children: ['Trend Line', 'Fibonacci', 'Horizontal Line', 'Channel', 'Text', 'Arrow', 'Measure']
-            .map((t) => Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: ActionChip(label: Text(t, style: const TextStyle(fontSize: 12)), onPressed: () => Navigator.pop(ctx)),
-                ))
-            .toList(),
+        child: Wrap(
+          children: ['Trend Line', 'Fibonacci', 'Horizontal Line', 'Channel', 'Text', 'Arrow', 'Measure']
+              .map((t) => Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: ActionChip(label: Text(t, style: const TextStyle(fontSize: 12)), onPressed: () => Navigator.pop(ctx)),
+                  ))
+              .toList(),
+        ),
       ),
     );
   }

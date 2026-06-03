@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/network/deriv_socket_service.dart';
-import '../../../core/network/messages/trade_models.dart';
+import '../../../../core/network/deriv_socket_service.dart';
+import '../../../../core/network/messages/trade_models.dart';
 
 final accountBalanceProvider = StreamProvider<AccountBalance?>((ref) {
   final service = ref.watch(derivSocketProvider);

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/network/deriv_socket_service.dart';
+import '../../../../core/network/deriv_socket_service.dart';
 
 final _tokenProvider = StateProvider<String?>((ref) => null);
 final _authLoadingProvider = StateProvider<bool>((ref) => false);
