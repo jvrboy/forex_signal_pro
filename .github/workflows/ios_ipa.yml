@@ -44,8 +44,14 @@ jobs:
         run: flutter test
         continue-on-error: true
 
+      - name: Setup CocoaPods
+        run: |
+          cd ios
+          pod repo update
+          pod install
+
       - name: Build iOS Release (no code signing)
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --verbose
 
       - name: Create archive and export unsigned IPA
         run: |
