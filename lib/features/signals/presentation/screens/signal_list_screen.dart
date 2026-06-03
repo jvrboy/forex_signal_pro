@@ -70,17 +70,18 @@ class SignalListScreen extends ConsumerWidget {
             );
           }
 
+          final activeSignals = ref.watch(activeSignalsProvider).valueOrNull;
+          final activeHeader = activeSignals != null && activeSignals.isNotEmpty
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text('Active (${activeSignals.length})', style: theme.textTheme.titleLarge),
+                )
+              : null;
+
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              ...{
-                final active = ref.watch(activeSignalsProvider).valueOrNull;
-                if (active != null && active.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text('Active (${active.length})', style: theme.textTheme.titleLarge),
-                  )
-              },
+              if (activeHeader != null) activeHeader,
               ...signals
                   .where((s) => s.status == SignalStatus.active)
                   .map((s) => _SignalCard(signal: s, onTap: () => context.go('/signal/${s.id}'))),
