@@ -1,0 +1,72 @@
+name: Build iOS Unsigned IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          architecture: x64
+
+      - name: Verify Flutter installation
+        run: flutter doctor
+
+      - name: Generate iOS platform files if missing
+        run: |
+          if [ ! -d "ios" ]; then
+            flutter create --project-name forex_signal_pro --platforms ios .
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Run tests
+        run: flutter test
+        continue-on-error: true
+
+      - name: Build iOS Release (no code signing)
+        run: flutter build ios --release --no-codesign
+
+      - name: Create archive and export unsigned IPA
+        run: |
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath ${{ runner.temp }}/Runner.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+          xcodebuild -exportArchive \
+            -archivePath ${{ runner.temp }}/Runner.xcarchive \
+            -exportPath ${{ runner.temp }}/ipa \
+            -exportOptionsPlist .github/export-unsigned.plist
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: forex-signal-pro-unsigned-ipa
+          path: ${{ runner.temp }}/ipa/*.ipa
+          if-no-files-found: error
