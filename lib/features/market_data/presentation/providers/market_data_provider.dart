@@ -22,7 +22,7 @@ final tickStreamProvider = StreamProvider.family<Tick, String>((ref, symbol) {
   socket.subscribeTicks(symbol);
 
   ref.onDispose(() {
-    socket.unsubscribeTicks();
+    socket.unsubscribeTicks(symbol);
     sub.cancel();
     controller.close();
   });

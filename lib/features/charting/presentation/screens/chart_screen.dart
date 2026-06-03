@@ -207,9 +207,9 @@ class _ChartArea extends ConsumerWidget {
       child: Container(
         margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: theme.cardTheme.color,
+          color: theme.cardTheme?.color,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: theme.dividerTheme.color ?? Colors.grey[800]!),
+          border: Border.all(color: theme.dividerTheme?.color ?? Colors.grey[800]!),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
