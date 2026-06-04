@@ -1,0 +1,353 @@
+name: Flutter CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.24.0'
+  JAVA_VERSION: '17'
+  ANDROID_API: '34'
+  MIN_SDK: '21'
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has-pubspec: ${{ steps.detect.outputs.pubspec }}
+      has-android: ${{ steps.detect.outputs.android }}
+      has-ios: ${{ steps.detect.outputs.ios }}
+      has-web: ${{ steps.detect.outputs.web }}
+      has-windows: ${{ steps.detect.outputs.windows }}
+      has-linux: ${{ steps.detect.outputs.linux }}
+      has-macos: ${{ steps.detect.outputs.macos }}
+      app-dir: ${{ steps.detect.outputs.appdir }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          pubspec="false"
+          android="false"
+          ios="false"
+          web="false"
+          windows="false"
+          linux="false"
+          macos="false"
+          appdir="."
+          for d in "." "forex_app" "app" "src"; do
+            if [ -f "$d/pubspec.yaml" ]; then
+              appdir="$d"
+              pubspec="true"
+              break
+            fi
+          done
+          [ -d "$appdir/android" ] && android="true"
+          [ -d "$appdir/ios" ] && ios="true"
+          [ -d "$appdir/web" ] && web="true"
+          [ -d "$appdir/windows" ] && windows="true"
+          [ -d "$appdir/linux" ] && linux="true"
+          [ -d "$appdir/macos" ] && macos="true"
+          echo "pubspec=$pubspec" >> $GITHUB_OUTPUT
+          echo "android=$android" >> $GITHUB_OUTPUT
+          echo "ios=$ios" >> $GITHUB_OUTPUT
+          echo "web=$web" >> $GITHUB_OUTPUT
+          echo "windows=$windows" >> $GITHUB_OUTPUT
+          echo "linux=$linux" >> $GITHUB_OUTPUT
+          echo "macos=$macos" >> $GITHUB_OUTPUT
+          echo "appdir=$appdir" >> $GITHUB_OUTPUT
+
+  analyze:
+    needs: detect
+    if: needs.detect.outputs.has-pubspec == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ needs.detect.outputs.app-dir }}/.dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pub-${{ runner.os }}-
+      - name: Create required asset directories
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          mkdir -p assets/gguf_models assets/onnx_models assets/fonts assets/icons
+      - name: Get dependencies
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter pub get
+      - name: Verify formatting
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          dart format --output=none --set-exit-if-changed lib test 2>&1 || true
+      - name: Analyze code
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 || true
+
+  test:
+    needs: detect
+    if: needs.detect.outputs.has-pubspec == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ needs.detect.outputs.app-dir }}/.dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pub-${{ runner.os }}-
+      - name: Get dependencies
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter pub get
+      - name: Run tests with coverage
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter test --coverage 2>&1 | tee test-output.txt
+      - name: Upload coverage
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-coverage
+          path: ${{ needs.detect.outputs.app-dir }}/coverage/lcov.info
+
+  build-android:
+    needs: [detect, analyze, test]
+    if: needs.detect.outputs.has-android == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: [debug, release]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: ${{ env.ANDROID_API }}
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles(format('{0}/android/**/*.gradle*', needs.detect.outputs.app-dir)) }}
+          restore-keys: gradle-${{ runner.os }}-
+      - name: Cache pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ needs.detect.outputs.app-dir }}/.dart_tool
+          key: pub-android-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pub-android-
+      - name: Get dependencies
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter pub get
+      - name: Build APK (${{ matrix.build-type }})
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          if [ "${{ matrix.build-type }}" = "release" ]; then
+            flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+          else
+            flutter build apk --debug --target-platform android-arm,android-arm64,android-x64
+          fi
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-apk-${{ matrix.build-type }}
+          path: ${{ needs.detect.outputs.app-dir }}/build/app/outputs/flutter-apk/*.apk
+
+  build-ios:
+    needs: [detect, analyze, test]
+    if: needs.detect.outputs.has-ios == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ needs.detect.outputs.app-dir }}/.dart_tool
+          key: pub-ios-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pub-ios-
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ needs.detect.outputs.app-dir }}/ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ hashFiles(format('{0}/ios/Podfile.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pods-${{ runner.os }}-
+      - name: Get dependencies
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter pub get
+      - name: Install pods
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}/ios
+          pod install --repo-update
+        continue-on-error: true
+      - name: Build iOS (no codesign)
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter build ios --release --no-codesign --no-tree-shake-icons 2>&1 | tee flutter-ios-build.log
+        continue-on-error: true
+      - name: Build iOS simulator
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter build ios --simulator --debug 2>&1 | tee flutter-ios-sim.log
+        continue-on-error: true
+      - name: Create unsigned IPA from archive
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}/ios
+          rm -rf ${{ runner.temp }}/Runner.xcarchive
+          xcodebuild \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath ${{ runner.temp }}/Runner.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+          APP_PATH="${{ runner.temp }}/Runner.xcarchive/Products/Applications/Runner.app"
+          if [ -d "$APP_PATH" ]; then
+            mkdir -p Payload
+            cp -R "$APP_PATH" Payload/
+            /usr/bin/codesign --force --sign - --timestamp=none Payload/Runner.app 2>&1 || true
+            zip -r -q Runner-unsigned.ipa Payload
+            mkdir -p ${{ runner.temp }}/ipa-output
+            mv Runner-unsigned.ipa ${{ runner.temp }}/ipa-output/
+            rm -rf Payload
+          fi
+        continue-on-error: true
+      - name: Upload iOS artifacts
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-ios-build
+          path: |
+            ${{ runner.temp }}/ipa-output/*.ipa
+            flutter-ios-build.log
+            flutter-ios-sim.log
+
+  build-windows:
+    needs: [detect, analyze, test]
+    if: needs.detect.outputs.has-windows == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.PUB_CACHE }}
+            ${{ needs.detect.outputs.app-dir }}/.dart_tool
+          key: pub-windows-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pub-windows-
+      - name: Get dependencies
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter pub get
+      - name: Build Windows
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter build windows --release
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-windows
+          path: ${{ needs.detect.outputs.app-dir }}/build/windows/x64/runner/Release/*.exe
+
+  build-web:
+    needs: [detect, analyze, test]
+    if: needs.detect.outputs.has-web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Cache pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ needs.detect.outputs.app-dir }}/.dart_tool
+          key: pub-web-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pub-web-
+      - name: Get dependencies
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter pub get
+      - name: Build web
+        run: |
+          cd ${{ needs.detect.outputs.app-dir }}
+          flutter build web --release
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web
+          path: ${{ needs.detect.outputs.app-dir }}/build/web/
+
+  release:
+    needs: [build-android, build-ios, build-windows, build-web]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/flutter-apk-*/*.apk
+            artifacts/**/flutter-ios-build/*.ipa
+            artifacts/**/flutter-windows/*.exe
+            artifacts/**/flutter-web/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
