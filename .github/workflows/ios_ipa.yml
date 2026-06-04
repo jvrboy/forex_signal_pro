@@ -3,6 +3,8 @@ name: Build iOS Unsigned IPA
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -23,9 +25,6 @@ jobs:
         with:
           channel: stable
           architecture: x64
-
-      - name: Verify Flutter installation
-        run: flutter doctor
 
       - name: Create required asset directories
         run: |
@@ -51,16 +50,9 @@ jobs:
           pod repo update
           pod install
 
-      - name: Check iOS project structure
+      - name: Build iOS (skip codesign)
         run: |
-          ls -la ios/
-          ls -la ios/Runner/
-          echo "--- Podfile ---"
-          cat ios/Podfile 2>/dev/null || echo "No Podfile found"
-
-      - name: Build iOS Release (no code signing)
-        run: |
-          flutter build ios --release --no-codesign --verbose 2>&1 | tee ${{ runner.temp }}/flutter_build.log
+          flutter build ios --release --no-codesign --no-tree-shake-icons 2>&1 | tee ${{ runner.temp }}/flutter_build.log
         continue-on-error: true
 
       - name: Upload build log
@@ -70,22 +62,41 @@ jobs:
           name: flutter-build-log
           path: ${{ runner.temp }}/flutter_build.log
 
-      - name: Create archive and export unsigned IPA
+      - name: Create archive (no codesign)
         run: |
           cd ios
-          xcodebuild -workspace Runner.xcworkspace \
+          rm -rf ${{ runner.temp }}/Runner.xcarchive
+          xcodebuild \
+            -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
+            -destination 'generic/platform=iOS' \
             -archivePath ${{ runner.temp }}/Runner.xcarchive \
             archive \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          xcodebuild -exportArchive \
-            -archivePath ${{ runner.temp }}/Runner.xcarchive \
-            -exportPath ${{ runner.temp }}/ipa \
-            -exportOptionsPlist ../.github/export-unsigned.plist
+      - name: Create unsigned IPA from archive
+        run: |
+          cd ${{ runner.temp }}
+          # Get the .app from inside the xcarchive
+          APP_PATH="${{ runner.temp }}/Runner.xcarchive/Products/Applications/Runner.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: $APP_PATH not found"
+            ls -la ${{ runner.temp }}/Runner.xcarchive/Products/ 2>&1
+            exit 1
+          fi
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          # Ad-hoc sign the binary so it loads on devices
+          /usr/bin/codesign --force --sign - --timestamp=none Payload/Runner.app 2>&1 || true
+          zip -r -q Runner-unsigned.ipa Payload
+          ls -la Runner-unsigned.ipa
+          mkdir -p ${{ runner.temp }}/ipa
+          mv Runner-unsigned.ipa ${{ runner.temp }}/ipa/
+          rm -rf Payload
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
