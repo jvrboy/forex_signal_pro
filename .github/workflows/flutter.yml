@@ -32,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: detect
+        shell: bash
         run: |
           pubspec="false"
           android="false"
@@ -82,6 +83,7 @@ jobs:
           key: pub-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
           restore-keys: pub-${{ runner.os }}-
       - name: Create required asset directories
+        shell: bash
         run: |
           cd ${{ needs.detect.outputs.app-dir }}
           mkdir -p assets/gguf_models assets/onnx_models assets/fonts assets/icons 2>/dev/null || true
@@ -175,6 +177,7 @@ jobs:
         run: mkdir -p assets/gguf_models assets/onnx_models assets/fonts assets/icons
       - name: Build APK (${{ matrix.build-type }})
         working-directory: ${{ needs.detect.outputs.app-dir }}
+        shell: bash
         run: |
           if [ "${{ matrix.build-type }}" = "release" ]; then
             flutter build apk --release --target-platform android-arm,android-arm64,android-x64 2>&1 | tee android-build.log
@@ -234,6 +237,7 @@ jobs:
         continue-on-error: true
       - name: Create unsigned IPA from archive
         working-directory: ${{ needs.detect.outputs.app-dir }}/ios
+        shell: bash
         run: |
           rm -rf ${{ runner.temp }}/Runner.xcarchive
           xcodebuild \
