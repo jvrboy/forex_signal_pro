@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: detect
         shell: bash
+        shell: bash
         run: |
           electron="false"
           msbuild="false"
@@ -86,16 +87,19 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
           restore-keys: electron-${{ runner.os }}-
       - name: Install root dependencies
+        shell: bash
         run: |
           if [ -f package.json ]; then
             npm ci
           fi
       - name: Install electron dependencies
+        shell: bash
         run: |
           if [ -d electron ] && [ -f electron/package.json ]; then
             cd electron && npm ci
           fi
       - name: Build app
+        shell: bash
         run: |
           if grep -q '"build"' package.json; then
             npm run build 2>&1 | tee electron-build.log
@@ -104,6 +108,7 @@ jobs:
           fi
         continue-on-error: true
       - name: Build Windows installer (NSIS + portable)
+        shell: bash
         run: |
           if [ -d electron ]; then
             cd electron
@@ -151,6 +156,7 @@ jobs:
           restore-keys: tauri-cargo-windows-
       - name: Find tauri.conf.json
         id: find_tauri
+        shell: bash
         run: |
           $conf = (Get-ChildItem -Path . -Filter tauri.conf.json -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName
           if ($conf) {
@@ -158,6 +164,7 @@ jobs:
           }
         shell: pwsh
       - name: Build with Tauri
+        shell: bash
         run: |
           if (Test-Path "${{ steps.find_tauri.outputs.tauri_dir }}") {
             Push-Location "${{ steps.find_tauri.outputs.tauri_dir }}"
@@ -184,6 +191,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
       - name: Build solution
+        shell: bash
         run: |
           msbuild *.sln /p:Configuration=Release /p:Platform=x64 /t:Build /v:minimal
         continue-on-error: true
@@ -208,10 +216,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
       - name: Install dependencies
+        shell: bash
         run: |
           if (Test-Path package.json) { npm ci }
         shell: pwsh
       - name: Build web app
+        shell: bash
         run: |
           if (Select-String -Path package.json -Pattern '"build"' -Quiet) {
             npm run build 2>&1 | Tee-Object build.log
@@ -221,6 +231,7 @@ jobs:
         shell: pwsh
         continue-on-error: true
       - name: Create Windows zip
+        shell: bash
         run: |
           New-Item -ItemType Directory -Force -Path build/outputs/windows | Out-Null
           if (Test-Path dist) {
