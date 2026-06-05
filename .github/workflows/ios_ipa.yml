@@ -20,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: check
+        shell: bash
         run: |
           exists="false"
           dir="ios"
@@ -52,6 +53,7 @@ jobs:
       - name: Check Xcode version
         run: xcodebuild -version
       - name: Check scheme
+        shell: bash
         run: |
           if [ -f ${{ needs.detect-ios.outputs.ios-dir }}/*.xcworkspace ]; then
             xcodebuild -workspace ${{ needs.detect-ios.outputs.ios-dir }}/*.xcworkspace -list
@@ -77,12 +79,14 @@ jobs:
           key: pods-test-${{ hashFiles(format('{0}/Podfile.lock', needs.detect-ios.outputs.ios-dir)) }}
           restore-keys: pods-test-
       - name: Install pods
+        shell: bash
         run: |
           if [ -f ${{ needs.detect-ios.outputs.ios-dir }}/Podfile ]; then
             cd ${{ needs.detect-ios.outputs.ios-dir }} && pod install
           fi
         continue-on-error: true
       - name: Build for simulator (iOS 15+)
+        shell: bash
         run: |
           if [ -f ${{ needs.detect-ios.outputs.ios-dir }}/*.xcworkspace ]; then
             xcodebuild build \
@@ -99,6 +103,7 @@ jobs:
           fi
         continue-on-error: true
       - name: Run tests
+        shell: bash
         run: |
           if [ -f ${{ needs.detect-ios.outputs.ios-dir }}/*.xcworkspace ]; then
             xcodebuild test \
@@ -133,12 +138,14 @@ jobs:
           key: pods-build-${{ hashFiles(format('{0}/Podfile.lock', needs.detect-ios.outputs.ios-dir)) }}
           restore-keys: pods-build-
       - name: Install pods
+        shell: bash
         run: |
           if [ -f ${{ needs.detect-ios.outputs.ios-dir }}/Podfile ]; then
             cd ${{ needs.detect-ios.outputs.ios-dir }} && pod install
           fi
         continue-on-error: true
       - name: Build for device (unsigned IPA)
+        shell: bash
         run: |
           cd ${{ needs.detect-ios.outputs.ios-dir }}
           mkdir -p build
@@ -164,6 +171,7 @@ jobs:
           fi
         continue-on-error: true
       - name: Create unsigned IPA from archive
+        shell: bash
         run: |
           cd ${{ needs.detect-ios.outputs.ios-dir }}
           if [ -d build/App.xcarchive ]; then
