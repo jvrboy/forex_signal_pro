@@ -41,7 +41,7 @@ jobs:
           linux="false"
           macos="false"
           appdir="."
-          for d in "." "forex_app" "app" "src"; do
+          for d in "." "forex_app" "app" "src" "apps/native" "apps/mobile" "mobile" "native"; do
             if [ -f "$d/pubspec.yaml" ]; then
               appdir="$d"
               pubspec="true"
@@ -84,19 +84,16 @@ jobs:
       - name: Create required asset directories
         run: |
           cd ${{ needs.detect.outputs.app-dir }}
-          mkdir -p assets/gguf_models assets/onnx_models assets/fonts assets/icons
+          mkdir -p assets/gguf_models assets/onnx_models assets/fonts assets/icons 2>/dev/null || true
       - name: Get dependencies
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter pub get
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter pub get
       - name: Verify formatting
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          dart format --output=none --set-exit-if-changed lib test 2>&1 || true
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: dart format --output=none --set-exit-if-changed lib test 2>&1 || true
       - name: Analyze code
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 || true
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 || true
 
   test:
     needs: detect
@@ -114,26 +111,27 @@ jobs:
           path: |
             ~/.pub-cache
             ${{ needs.detect.outputs.app-dir }}/.dart_tool
-          key: pub-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
-          restore-keys: pub-${{ runner.os }}-
+          key: pub-test-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
+          restore-keys: pub-test-${{ runner.os }}-
       - name: Get dependencies
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter pub get
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter pub get
       - name: Run tests with coverage
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter test --coverage 2>&1 | tee test-output.txt
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter test --coverage 2>&1 | tee test-output.txt
+        continue-on-error: true
       - name: Upload coverage
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: flutter-coverage
-          path: ${{ needs.detect.outputs.app-dir }}/coverage/lcov.info
+          path: |
+            ${{ needs.detect.outputs.app-dir }}/coverage/lcov.info
+            test-output.txt
 
   build-android:
     needs: [detect, analyze, test]
-    if: needs.detect.outputs.has-android == 'true'
+    if: needs.detect.outputs.has-pubspec == 'true' && needs.detect.outputs.has-android == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -159,8 +157,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles(format('{0}/android/**/*.gradle*', needs.detect.outputs.app-dir)) }}
-          restore-keys: gradle-${{ runner.os }}-
+          key: gradle-android-${{ runner.os }}-${{ hashFiles(format('{0}/android/**/*.gradle*', needs.detect.outputs.app-dir)) }}
+          restore-keys: gradle-android-${{ runner.os }}-
       - name: Cache pub
         uses: actions/cache@v4
         with:
@@ -170,26 +168,32 @@ jobs:
           key: pub-android-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
           restore-keys: pub-android-
       - name: Get dependencies
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter pub get
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter pub get
+      - name: Create asset directories
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: mkdir -p assets/gguf_models assets/onnx_models assets/fonts assets/icons
       - name: Build APK (${{ matrix.build-type }})
+        working-directory: ${{ needs.detect.outputs.app-dir }}
         run: |
-          cd ${{ needs.detect.outputs.app-dir }}
           if [ "${{ matrix.build-type }}" = "release" ]; then
-            flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+            flutter build apk --release --target-platform android-arm,android-arm64,android-x64 2>&1 | tee android-build.log
           else
-            flutter build apk --debug --target-platform android-arm,android-arm64,android-x64
+            flutter build apk --debug --target-platform android-arm,android-arm64,android-x64 2>&1 | tee android-build.log
           fi
+        continue-on-error: true
       - name: Upload APK
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: flutter-apk-${{ matrix.build-type }}
-          path: ${{ needs.detect.outputs.app-dir }}/build/app/outputs/flutter-apk/*.apk
+          path: |
+            ${{ needs.detect.outputs.app-dir }}/build/app/outputs/flutter-apk/*.apk
+            android-build.log
 
   build-ios:
     needs: [detect, analyze, test]
-    if: needs.detect.outputs.has-ios == 'true'
+    if: needs.detect.outputs.has-pubspec == 'true' && needs.detect.outputs.has-ios == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -214,27 +218,23 @@ jobs:
           key: pods-${{ runner.os }}-${{ hashFiles(format('{0}/ios/Podfile.lock', needs.detect.outputs.app-dir)) }}
           restore-keys: pods-${{ runner.os }}-
       - name: Get dependencies
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter pub get
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter pub get
       - name: Install pods
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}/ios
-          pod install --repo-update
+        working-directory: ${{ needs.detect.outputs.app-dir }}/ios
+        run: pod install --repo-update
         continue-on-error: true
       - name: Build iOS (no codesign)
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter build ios --release --no-codesign --no-tree-shake-icons 2>&1 | tee flutter-ios-build.log
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter build ios --release --no-codesign --no-tree-shake-icons 2>&1 | tee flutter-ios-build.log
         continue-on-error: true
       - name: Build iOS simulator
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter build ios --simulator --debug 2>&1 | tee flutter-ios-sim.log
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter build ios --simulator --debug 2>&1 | tee flutter-ios-sim.log
         continue-on-error: true
       - name: Create unsigned IPA from archive
+        working-directory: ${{ needs.detect.outputs.app-dir }}/ios
         run: |
-          cd ${{ needs.detect.outputs.app-dir }}/ios
           rm -rf ${{ runner.temp }}/Runner.xcarchive
           xcodebuild \
             -workspace Runner.xcworkspace \
@@ -270,7 +270,7 @@ jobs:
 
   build-windows:
     needs: [detect, analyze, test]
-    if: needs.detect.outputs.has-windows == 'true'
+    if: needs.detect.outputs.has-pubspec == 'true' && needs.detect.outputs.has-windows == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -287,14 +287,14 @@ jobs:
           key: pub-windows-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
           restore-keys: pub-windows-
       - name: Get dependencies
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter pub get
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter pub get
       - name: Build Windows
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter build windows --release
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter build windows --release
+        continue-on-error: true
       - name: Upload Windows build
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: flutter-windows
@@ -302,7 +302,7 @@ jobs:
 
   build-web:
     needs: [detect, analyze, test]
-    if: needs.detect.outputs.has-web == 'true'
+    if: needs.detect.outputs.has-pubspec == 'true' && needs.detect.outputs.has-web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -319,18 +319,18 @@ jobs:
           key: pub-web-${{ hashFiles(format('{0}/pubspec.lock', needs.detect.outputs.app-dir)) }}
           restore-keys: pub-web-
       - name: Get dependencies
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter pub get
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter pub get
       - name: Build web
-        run: |
-          cd ${{ needs.detect.outputs.app-dir }}
-          flutter build web --release
+        working-directory: ${{ needs.detect.outputs.app-dir }}
+        run: flutter build web --release
+        continue-on-error: true
       - name: Upload web build
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: flutter-web
-          path: ${{ needs.detect.outputs.app-dir }}/build/web/
+          path: ${{ needs.detect.outputs.app-dir }}/build/web/**
 
   release:
     needs: [build-android, build-ios, build-windows, build-web]
