@@ -1,0 +1,88 @@
+name: macOS CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, develop]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  detect:
+    runs-on: macos-latest
+    outputs:
+      has-electron: ${{ steps.detect.outputs.electron }}
+      has-xcode: ${{ steps.detect.outputs.xcode }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          electron="false"
+          xcode="false"
+          if [ -f package.json ] && grep -q '"electron"' package.json 2>/dev/null; then
+            electron="true"
+          fi
+          if ls *.xcodeproj 2>/dev/null; then
+            xcode="true"
+          fi
+          echo "electron=$electron" >> $GITHUB_OUTPUT
+          echo "xcode=$xcode" >> $GITHUB_OUTPUT
+
+  electron-build:
+    needs: detect
+    if: needs.detect.outputs.has-electron == 'true'
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: mac-electron-${{ matrix.arch }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: mac-electron-${{ matrix.arch }}-
+      - name: Install dependencies
+        run: npm ci
+      - name: Build Electron macOS
+        run: |
+          npx electron-builder --mac --${{ matrix.arch }} --publish never 2>&1 | tee electron-mac-build.log
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-electron-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.pkg
+            release/*.dmg
+
+  release:
+    needs: electron-build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
