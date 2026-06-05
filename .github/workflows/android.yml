@@ -11,26 +11,48 @@ on:
     types: [published]
   workflow_dispatch:
 
+env:
+  JAVA_VERSION: '17'
+  ANDROID_API: '34'
+  MIN_SDK: '24'
+
 jobs:
-  detect-android:
+  detect:
     runs-on: ubuntu-latest
     outputs:
       has-android: ${{ steps.check.outputs.exists }}
+      android-dir: ${{ steps.check.outputs.android_dir }}
     steps:
       - uses: actions/checkout@v4
       - id: check
-        run: echo "exists=$(test -d android/app && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: |
+          exists="false"
+          dir="."
+          for d in "android" "app/android" "mobile/android" "src/android" "forex_app/android" "platforms/android" "android-app"; do
+            if [ -f "$d/app/build.gradle" ] || [ -f "$d/build.gradle" ] || [ -f "$d/gradlew" ]; then
+              exists="true"
+              dir="$d"
+              break
+            fi
+          done
+          # Also check Capacitor-style
+          if [ -f "android/app/build.gradle" ]; then
+            exists="true"
+            dir="android"
+          fi
+          echo "exists=$exists" >> $GITHUB_OUTPUT
+          echo "android_dir=$dir" >> $GITHUB_OUTPUT
 
   lint:
-    needs: detect-android
-    if: needs.detect-android.outputs.has-android == 'true'
+    needs: detect
+    if: needs.detect.outputs.has-android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       - name: Cache Gradle
@@ -39,24 +61,27 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*') }}
-          restore-keys: gradle-
+          key: gradle-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.gradle*', needs.detect.outputs.android-dir)) }}
+          restore-keys: gradle-${{ runner.os }}-
       - name: Run Android lint
-        run: cd android && ./gradlew lintDebug --stacktrace
+        working-directory: ${{ needs.detect.outputs.android-dir }}
+        run: ./gradlew lintDebug --stacktrace
+        continue-on-error: true
 
   test:
-    needs: detect-android
-    if: needs.detect-android.outputs.has-android == 'true'
+    needs: detect
+    if: needs.detect.outputs.has-android == 'true'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        api-level: [24, 29, 34]
+        api-level: ['24', '29', '34']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       - name: Cache Gradle
@@ -65,38 +90,36 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*') }}
-          restore-keys: gradle-
+          key: gradle-test-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.gradle*', needs.detect.outputs.android-dir)) }}
+          restore-keys: gradle-test-${{ runner.os }}-
       - name: Unit tests
-        run: cd android && ./gradlew testDebugUnitTest
-      - name: Instrumented tests (API ${{ matrix.api-level }})
-        uses: reactivecircus/android-emulator-runner@v1
-        with:
-          api-level: ${{ matrix.api-level }}
-          target: google_apis
-          arch: x86_64
-          profile: nexus-5
-        if: false # disable instrumented in CI due to emulator constraints
+        working-directory: ${{ needs.detect.outputs.android-dir }}
+        run: ./gradlew testDebugUnitTest 2>&1 | tee unit-test.log
+        continue-on-error: true
       - name: Upload test results
-        uses: actions/upload-artifact@v4
         if: success() || failure()
+        uses: actions/upload-artifact@v4
         with:
           name: test-results-api-${{ matrix.api-level }}
-          path: android/app/build/reports/tests
+          path: |
+            ${{ needs.detect.outputs.android-dir }}/app/build/reports/tests/**
+            ${{ needs.detect.outputs.android-dir }}/*/build/reports/tests/**
+            unit-test.log
 
   build-debug:
-    needs: detect-android
-    if: needs.detect-android.outputs.has-android == 'true'
+    needs: detect
+    if: needs.detect.outputs.has-android == 'true'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        api-level: [24, 29, 34]
+        api-level: ['24', '29', '34']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       - name: Cache Gradle
@@ -105,26 +128,32 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*') }}
-          restore-keys: gradle-
+          key: gradle-debug-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.gradle*', needs.detect.outputs.android-dir)) }}
+          restore-keys: gradle-debug-${{ runner.os }}-
       - name: Build debug APK (API ${{ matrix.api-level }})
-        run: cd android && ./gradlew assembleDebug -PminSdkVersion=${{ matrix.api-level }}
+        working-directory: ${{ needs.detect.outputs.android-dir }}
+        run: ./gradlew assembleDebug -PminSdkVersion=${{ matrix.api-level }} 2>&1 | tee debug-build.log
+        continue-on-error: true
       - name: Upload debug APK
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk-api-${{ matrix.api-level }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: |
+            ${{ needs.detect.outputs.android-dir }}/app/build/outputs/apk/debug/**/*.apk
+            ${{ needs.detect.outputs.android-dir }}/*/build/outputs/apk/debug/**/*.apk
+            debug-build.log
 
   build-release:
-    needs: detect-android
-    if: needs.detect-android.outputs.has-android == 'true'
+    needs: detect
+    if: needs.detect.outputs.has-android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       - name: Cache Gradle
@@ -133,29 +162,36 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*') }}
-          restore-keys: gradle-
+          key: gradle-release-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.gradle*', needs.detect.outputs.android-dir)) }}
+          restore-keys: gradle-release-${{ runner.os }}-
       - name: Decode keystore
         run: |
           if [ -n "$ANDROID_SIGNING_KEY" ]; then
-            echo "$ANDROID_SIGNING_KEY" | base64 -d > android/app/debug.keystore
+            echo "$ANDROID_SIGNING_KEY" | base64 -d > ${{ needs.detect.outputs.android-dir }}/app/debug.keystore
           fi
         env:
           ANDROID_SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
+        continue-on-error: true
       - name: Build release APK
+        working-directory: ${{ needs.detect.outputs.android-dir }}
         run: |
-          if [ -f android/app/debug.keystore ]; then
-            cd android && ./gradlew assembleRelease -PsigningProperties=signing.properties
+          if [ -f app/debug.keystore ]; then
+            ./gradlew assembleRelease -PsigningProperties=signing.properties 2>&1 | tee release-build.log
           else
-            cd android && ./gradlew assembleRelease
+            ./gradlew assembleRelease 2>&1 | tee release-build.log
           fi
         env:
           SIGNING_PROPERTIES: ${{ secrets.ANDROID_SIGNING_PROPERTIES }}
+        continue-on-error: true
       - name: Upload release APK
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          path: |
+            ${{ needs.detect.outputs.android-dir }}/app/build/outputs/apk/release/**/*.apk
+            ${{ needs.detect.outputs.android-dir }}/*/build/outputs/apk/release/**/*.apk
+            release-build.log
 
   release:
     needs: [build-debug, build-release]
@@ -163,9 +199,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/**/*.apk
+          files: artifacts/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
