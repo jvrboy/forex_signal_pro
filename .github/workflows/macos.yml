@@ -20,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: detect
+        shell: bash
         run: |
           electron="false"
           xcode="false"
@@ -57,6 +58,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build Electron macOS
+        shell: bash
         run: |
           npx electron-builder --mac --${{ matrix.arch }} --publish never 2>&1 | tee electron-mac-build.log
         env:
