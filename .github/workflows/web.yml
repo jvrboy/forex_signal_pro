@@ -1,0 +1,163 @@
+name: PWA Static Bundle CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, develop]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has-package: ${{ steps.detect.outputs.pkg }}
+      has-index: ${{ steps.detect.outputs.index }}
+      has-manifest: ${{ steps.detect.outputs.manifest }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          pkg="false"
+          idx="false"
+          mfst="false"
+          [ -f package.json ] && pkg="true"
+          [ -f index.html ] && idx="true"
+          [ -f manifest.json ] && mfst="true"
+          echo "pkg=$pkg" >> $GITHUB_OUTPUT
+          echo "index=$idx" >> $GITHUB_OUTPUT
+          echo "manifest=$mfst" >> $GITHUB_OUTPUT
+
+  validate:
+    needs: detect
+    if: needs.detect.outputs.has-index == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate HTML
+        run: |
+          if command -v tidy &> /dev/null; then
+            tidy -q -e index.html || echo "HTML has warnings (non-fatal)"
+          else
+            head -1 index.html | grep -q '<!DOCTYPE' && echo "HTML DOCTYPE present"
+          fi
+        continue-on-error: true
+      - name: Validate manifest.json
+        if: needs.detect.outputs.has-manifest == 'true'
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('manifest.json'))" && echo "manifest.json OK"
+        continue-on-error: true
+      - name: Validate service worker
+        if: hashFiles('sw.js') != ''
+        run: |
+          node --check sw.js 2>&1 && echo "sw.js syntax OK"
+        continue-on-error: true
+      - name: Check PWA icon
+        if: needs.detect.outputs.has-manifest == 'true'
+        run: |
+          node -e "
+            const m = JSON.parse(require('fs').readFileSync('manifest.json'));
+            if (m.icons && m.icons.length > 0) {
+              console.log('Manifest has', m.icons.length, 'icon(s)');
+            } else {
+              console.log('No icons in manifest (warning)');
+            }
+          "
+        continue-on-error: true
+
+  build:
+    needs: detect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install dependencies
+        if: needs.detect.outputs.has-package == 'true'
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+          fi
+      - name: Build PWA bundle
+        if: needs.detect.outputs.has-package == 'true'
+        run: |
+          if grep -q '"build"' package.json; then
+            npm run build 2>&1 | tee build.log
+          else
+            echo "No build script — using static files"
+          fi
+        continue-on-error: true
+      - name: Create static bundle
+        if: needs.detect.outputs.has-package == 'false'
+        run: |
+          mkdir -p dist
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='.github' . dist/
+        continue-on-error: true
+      - name: Generate PWA zip
+        run: |
+          if [ -d dist ]; then
+            cd dist && zip -r ../pwa-bundle.zip . -q
+          else
+            mkdir -p dist && rsync -av --exclude='.git' --exclude='node_modules' . dist/ && cd dist && zip -r ../pwa-bundle.zip . -q
+          fi
+        continue-on-error: true
+      - name: Upload PWA bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-bundle
+          path: |
+            pwa-bundle.zip
+            dist/**
+            build.log
+
+  test:
+    needs: detect
+    if: needs.detect.outputs.has-package == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: |
+          if grep -q '"lint"' package.json; then
+            npm run lint 2>&1
+          fi
+        continue-on-error: true
+      - name: Test
+        run: |
+          if grep -q '"test"' package.json; then
+            npm test 2>&1
+          fi
+        continue-on-error: true
+
+  release:
+    needs: [build, validate]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/pwa-bundle
+            artifacts/**/pwa-bundle.zip
+            artifacts/**/dist/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
