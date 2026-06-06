@@ -25,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: check
+        shell: bash
         run: |
           exists="false"
           dir="."
@@ -165,6 +166,7 @@ jobs:
           key: gradle-release-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.gradle*', needs.detect.outputs.android-dir)) }}
           restore-keys: gradle-release-${{ runner.os }}-
       - name: Decode keystore
+        shell: bash
         run: |
           if [ -n "$ANDROID_SIGNING_KEY" ]; then
             echo "$ANDROID_SIGNING_KEY" | base64 -d > ${{ needs.detect.outputs.android-dir }}/app/debug.keystore
@@ -174,6 +176,7 @@ jobs:
         continue-on-error: true
       - name: Build release APK
         working-directory: ${{ needs.detect.outputs.android-dir }}
+        shell: bash
         run: |
           if [ -f app/debug.keystore ]; then
             ./gradlew assembleRelease -PsigningProperties=signing.properties 2>&1 | tee release-build.log
