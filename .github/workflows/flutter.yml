@@ -55,14 +55,16 @@ jobs:
           [ -d "$appdir/windows" ] && windows="true"
           [ -d "$appdir/linux" ] && linux="true"
           [ -d "$appdir/macos" ] && macos="true"
-          echo "pubspec=$pubspec" >> $GITHUB_OUTPUT
-          echo "android=$android" >> $GITHUB_OUTPUT
-          echo "ios=$ios" >> $GITHUB_OUTPUT
-          echo "web=$web" >> $GITHUB_OUTPUT
-          echo "windows=$windows" >> $GITHUB_OUTPUT
-          echo "linux=$linux" >> $GITHUB_OUTPUT
-          echo "macos=$macos" >> $GITHUB_OUTPUT
-          echo "appdir=$appdir" >> $GITHUB_OUTPUT
+          {
+            echo "pubspec=$pubspec"
+            echo "android=$android"
+            echo "ios=$ios"
+            echo "web=$web"
+            echo "windows=$windows"
+            echo "linux=$linux"
+            echo "macos=$macos"
+            echo "appdir=$appdir"
+          } >> "$GITHUB_OUTPUT"
 
   analyze:
     needs: detect
