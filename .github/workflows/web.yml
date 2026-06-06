@@ -21,19 +21,26 @@ jobs:
       has-package: ${{ steps.detect.outputs.pkg }}
       has-index: ${{ steps.detect.outputs.index }}
       has-manifest: ${{ steps.detect.outputs.manifest }}
+      has-sw: ${{ steps.detect.outputs.sw }}
     steps:
       - uses: actions/checkout@v4
       - id: detect
+        shell: bash
         run: |
           pkg="false"
           idx="false"
           mfst="false"
+          sw="false"
           [ -f package.json ] && pkg="true"
           [ -f index.html ] && idx="true"
           [ -f manifest.json ] && mfst="true"
-          echo "pkg=$pkg" >> $GITHUB_OUTPUT
-          echo "index=$idx" >> $GITHUB_OUTPUT
-          echo "manifest=$mfst" >> $GITHUB_OUTPUT
+          [ -f sw.js ] && sw="true"
+          {
+            echo "pkg=$pkg"
+            echo "index=$idx"
+            echo "manifest=$mfst"
+            echo "sw=$sw"
+          } >> "$GITHUB_OUTPUT"
 
   validate:
     needs: detect
@@ -42,6 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate HTML
+        shell: bash
         run: |
           if command -v tidy &> /dev/null; then
             tidy -q -e index.html || echo "HTML has warnings (non-fatal)"
@@ -51,16 +59,19 @@ jobs:
         continue-on-error: true
       - name: Validate manifest.json
         if: needs.detect.outputs.has-manifest == 'true'
+        shell: bash
         run: |
           node -e "JSON.parse(require('fs').readFileSync('manifest.json'))" && echo "manifest.json OK"
         continue-on-error: true
       - name: Validate service worker
-        if: hashFiles('sw.js') != ''
+        if: needs.detect.outputs.has-sw == 'true'
+        shell: bash
         run: |
           node --check sw.js 2>&1 && echo "sw.js syntax OK"
         continue-on-error: true
       - name: Check PWA icon
         if: needs.detect.outputs.has-manifest == 'true'
+        shell: bash
         run: |
           node -e "
             const m = JSON.parse(require('fs').readFileSync('manifest.json'));
@@ -83,12 +94,14 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         if: needs.detect.outputs.has-package == 'true'
+        shell: bash
         run: |
           if [ -f package.json ]; then
             npm ci
           fi
       - name: Build PWA bundle
         if: needs.detect.outputs.has-package == 'true'
+        shell: bash
         run: |
           if grep -q '"build"' package.json; then
             npm run build 2>&1 | tee build.log
@@ -98,16 +111,20 @@ jobs:
         continue-on-error: true
       - name: Create static bundle
         if: needs.detect.outputs.has-package == 'false'
+        shell: bash
         run: |
           mkdir -p dist
-          rsync -av --exclude='.git' --exclude='node_modules' --exclude='.github' . dist/
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='.github' . dist/ 2>&1 | tail -3
         continue-on-error: true
       - name: Generate PWA zip
+        shell: bash
         run: |
           if [ -d dist ]; then
-            cd dist && zip -r ../pwa-bundle.zip . -q
+            (cd dist && zip -r ../pwa-bundle.zip . -q) || echo "zip step had warnings"
           else
-            mkdir -p dist && rsync -av --exclude='.git' --exclude='node_modules' . dist/ && cd dist && zip -r ../pwa-bundle.zip . -q
+            mkdir -p dist
+            rsync -av --exclude='.git' --exclude='node_modules' . dist/ >/dev/null 2>&1 || true
+            (cd dist && zip -r ../pwa-bundle.zip . -q) || echo "zip step had warnings"
           fi
         continue-on-error: true
       - name: Upload PWA bundle
@@ -132,12 +149,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Lint
+        shell: bash
         run: |
           if grep -q '"lint"' package.json; then
             npm run lint 2>&1
           fi
         continue-on-error: true
       - name: Test
+        shell: bash
         run: |
           if grep -q '"test"' package.json; then
             npm test 2>&1
